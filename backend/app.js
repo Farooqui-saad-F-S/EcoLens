@@ -1,5 +1,6 @@
 import cors from 'cors'
 import express from 'express'
+import { connectDb } from './config/db.js'
 import quizRoutes from './routes/quizRoutes.js'
 
 const app = express()
@@ -17,7 +18,23 @@ app.get('/api/health', (_req, res) => {
   res.json({ success: true, message: 'EcoLens API is running' })
 })
 
-app.use('/api/quiz-results', quizRoutes)
+app.use(
+  '/api/quiz-results',
+  async (_req, res, next) => {
+    try {
+      await connectDb()
+      next()
+    } catch (error) {
+      console.error('MongoDB connection failed:', error.message)
+
+      return res.status(503).json({
+        success: false,
+        message: 'Database is temporarily unavailable',
+      })
+    }
+  },
+  quizRoutes,
+)
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' })
