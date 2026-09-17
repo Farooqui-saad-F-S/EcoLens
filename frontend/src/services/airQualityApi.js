@@ -1,20 +1,18 @@
 /**
  * airQualityApi
  * All network access for the Air Quality Explorer lives here — geocoding
- * (city search) and the Open-Meteo Air Quality fetch, plus response
- * normalization. UI components never call fetch() directly; they call
- * these functions through the useAirQualityExplorer hook.
+ * (city search) and the EcoLens backend air-quality endpoint. UI components
+ * never call fetch() directly; they call these functions through the
+ * useAirQualityExplorer hook.
  *
- * APIs used (both free, no key required):
+ * APIs used:
  * - Geocoding: https://open-meteo.com/en/docs/geocoding-api
- * - Air Quality: https://open-meteo.com/en/docs/air-quality-api
+ * - Air quality: the EcoLens backend, which tries OpenAQ first and keeps
+ *   Open-Meteo as its fallback
  */
 
 const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
-const AIR_QUALITY_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality'
-
-const HOURLY_VARS = ['pm10', 'pm2_5', 'carbon_monoxide', 'nitrogen_dioxide', 'ozone', 'us_aqi', 'european_aqi']
-const CURRENT_VARS = ['us_aqi', 'european_aqi', 'pm10', 'pm2_5', 'carbon_monoxide', 'nitrogen_dioxide', 'ozone']
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '')
 
 const REQUEST_TIMEOUT_MS = 10000
 
@@ -28,7 +26,7 @@ async function fetchWithTimeout(url, timeoutMs = REQUEST_TIMEOUT_MS) {
       let reason = `Request failed with status ${response.status}`
       try {
         const body = await response.json()
-        if (body?.reason) reason = body.reason
+        if (body?.message || body?.reason) reason = body.message || body.reason
       } catch {
         // response wasn't JSON — keep the generic reason
       }
@@ -67,58 +65,21 @@ export async function searchLocations(query) {
 }
 
 /**
- * Fetch air quality data for a coordinate and normalize it into a flat,
- * chart-friendly shape.
+ * Fetch normalized air-quality data from the EcoLens backend.
  * @param {{latitude:number, longitude:number}} coords
  */
 export async function fetchAirQuality({ latitude, longitude }) {
   const params = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    hourly: HOURLY_VARS.join(','),
-    current: CURRENT_VARS.join(','),
-    timezone: 'auto',
-    past_days: '2',
-    forecast_days: '2',
+    lat: String(latitude),
+    lon: String(longitude),
   })
 
-  const raw = await fetchWithTimeout(`${AIR_QUALITY_URL}?${params.toString()}`)
-  return normalizeAirQuality(raw)
-}
-
-function normalizeAirQuality(raw) {
-  const hourlySource = raw.hourly ?? {}
-  const times = hourlySource.time ?? []
-
-  const hourly = times.map((time, i) => ({
-    time,
-    aqi: hourlySource.us_aqi?.[i] ?? null,
-    europeanAqi: hourlySource.european_aqi?.[i] ?? null,
-    pm2_5: hourlySource.pm2_5?.[i] ?? null,
-    pm10: hourlySource.pm10?.[i] ?? null,
-    no2: hourlySource.nitrogen_dioxide?.[i] ?? null,
-    o3: hourlySource.ozone?.[i] ?? null,
-    co: hourlySource.carbon_monoxide?.[i] ?? null,
-  }))
-
-  const c = raw.current ?? {}
-  const current = {
-    time: c.time ?? null,
-    aqi: c.us_aqi ?? null,
-    europeanAqi: c.european_aqi ?? null,
-    pm2_5: c.pm2_5 ?? null,
-    pm10: c.pm10 ?? null,
-    no2: c.nitrogen_dioxide ?? null,
-    o3: c.ozone ?? null,
-    co: c.carbon_monoxide ?? null,
+  const payload = await fetchWithTimeout(
+    `${API_BASE_URL}/api/air-quality?${params.toString()}`,
+  )
+  if (!payload?.data?.current || !Array.isArray(payload.data.hourly)) {
+    throw new Error('The server returned incomplete air-quality data.')
   }
 
-  return {
-    current,
-    hourly,
-    units: raw.hourly_units ?? {},
-    timezone: raw.timezone ?? 'UTC',
-    latitude: raw.latitude,
-    longitude: raw.longitude,
-  }
+  return payload.data
 }

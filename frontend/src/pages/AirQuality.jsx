@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { AlertCircle, BarChart3, Compass, MapPin } from 'lucide-react'
+import { AlertCircle, BarChart3, Compass, MapPin, RadioTower } from 'lucide-react'
 
 import PageContainer from '../components/layout/PageContainer.jsx'
 import GlassCard from '../components/ui/GlassCard.jsx'
@@ -16,6 +16,18 @@ import { POLLUTANTS } from '../data/pollutantInfo.js'
 import { findNearestHourly, dateOnly } from '../utils/time.js'
 
 const POPULAR_CITIES = ['Bhiwandi', 'Mumbai', 'Delhi', 'London', 'Tokyo', 'Sydney']
+
+function formatUpdatedAt(value, timezone) {
+  if (!value) return 'Time unavailable'
+
+  const hasUtcOffset = /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  if (!hasUtcOffset) {
+    return `${value.replace('T', ' ')} (${timezone || 'local time'})`
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Time unavailable' : date.toLocaleString()
+}
 
 export default function AirQuality() {
   const {
@@ -34,7 +46,7 @@ export default function AirQuality() {
 
   const nearestNow = useMemo(() => {
     if (!data) return null
-    return findNearestHourly(data.hourly, data.current?.time)
+    return findNearestHourly(data.hourly, data.aqiUpdatedAt ?? data.current?.time)
   }, [data])
 
   const todayHourly = useMemo(() => {
@@ -119,7 +131,55 @@ export default function AirQuality() {
 
         {status === 'success' && data && (
           <div className="flex flex-col gap-6">
-            <AQIMainCard location={locationLabel} aqi={data.current.aqi} time={data.current.time} />
+            {data.current.aqi != null ? (
+              <AQIMainCard
+                location={locationLabel}
+                aqi={data.current.aqi}
+                time={data.aqiUpdatedAt ?? data.current.time}
+              />
+            ) : (
+              <GlassCard hover={false}>
+                <p className="text-sm font-medium text-white">AQI estimate unavailable</p>
+                <p className="mt-2 text-sm leading-relaxed text-white/55">
+                  Recent station pollutant measurements are available below, but the model AQI
+                  could not be loaded. No AQI has been calculated from the station values.
+                </p>
+              </GlassCard>
+            )}
+
+            <GlassCard hover={false} className="flex items-start gap-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-accent/10 text-cyan-accent">
+                <RadioTower size={18} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">
+                  {data.sourceType === 'station'
+                    ? 'Measured Monitoring Station Data'
+                    : 'Model Estimate'}
+                </p>
+
+                {data.sourceType === 'station' ? (
+                  <div className="mt-2 space-y-1 text-xs leading-relaxed text-white/55">
+                    <p>Station: {data.stationName}</p>
+                    {data.provider && <p>Provider: {data.provider}</p>}
+                    {data.owner && data.owner !== data.provider && <p>Owner: {data.owner}</p>}
+                    {data.distanceKm != null && <p>Distance: {data.distanceKm} km</p>}
+                    <p>Updated: {formatUpdatedAt(data.updatedAt, data.timezone)}</p>
+                    <p className="pt-1 text-white/40">
+                      AQI and hourly charts:{' '}
+                      {data.aqiSourceName
+                        ? `${data.aqiSourceName} model estimate`
+                        : 'currently unavailable'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-1 text-xs leading-relaxed text-white/55">
+                    <p>Source: {data.sourceName}</p>
+                    <p>Updated: {formatUpdatedAt(data.updatedAt, data.timezone)}</p>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
 
             {/* Pollutant cards */}
             <div>
@@ -160,18 +220,30 @@ export default function AirQuality() {
                 <p className="mt-2 text-sm text-white/50">
                   These charts turn hourly readings into patterns that are easier to notice.
                 </p>
+                {data.chartSourceName && (
+                  <p className="mt-2 text-xs text-white/40">
+                    AQI chart source: {data.chartSourceName} model estimate
+                  </p>
+                )}
               </div>
-              <AQITrendChart hourly={data.hourly} nowTime={nearestNow?.time} />
-              <HourlyPatternChart todayHourly={todayHourly} currentHourTime={nearestNow?.time} />
+              {data.hourly.length > 0 && (
+                <>
+                  <AQITrendChart hourly={data.hourly} nowTime={nearestNow?.time} />
+                  <HourlyPatternChart
+                    todayHourly={todayHourly}
+                    currentHourTime={nearestNow?.time}
+                  />
+                </>
+              )}
               <PollutantComparisonChart current={data.current} />
             </section>
 
             <GlassCard hover={false} className="flex items-center gap-4">
               <AlertCircle size={20} className="text-warning shrink-0" />
               <p className="text-sm text-white/60">
-                Forecast data from Open-Meteo (CAMS atmospheric composition models). Values are
-                model estimates, not direct sensor readings, and may differ from official local
-                monitoring stations.
+                {data.sourceType === 'station'
+                  ? 'Pollutant cards use recent OpenAQ station measurements. AQI and time-series charts use Open-Meteo (CAMS) model estimates, so the two sources are not silently mixed.'
+                  : 'Data comes from Open-Meteo (CAMS atmospheric composition models). Values are model estimates, not direct sensor readings, and may differ from official local monitoring stations.'}
               </p>
             </GlassCard>
           </div>

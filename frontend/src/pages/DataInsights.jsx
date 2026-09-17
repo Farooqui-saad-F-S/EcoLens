@@ -12,8 +12,8 @@ export default function DataInsights() {
   const snapshot = readAirQualitySnapshot()
   const locationLabel = snapshot
     ? [snapshot.location.name, snapshot.location.admin1, snapshot.location.country]
-        .filter(Boolean)
-        .join(', ')
+      .filter(Boolean)
+      .join(', ')
     : ''
 
   return (
@@ -60,16 +60,19 @@ export default function DataInsights() {
             <AQIUnderstanding currentAqi={snapshot.data.current.aqi} />
           </div>
 
-          <AirQualityTrendInsight
-            hourly={snapshot.data.hourly}
-            nowTime={snapshot.data.current.time}
-          />
+          {snapshot.data.hourly.length > 0 && (
+            <AirQualityTrendInsight
+              hourly={snapshot.data.hourly}
+              nowTime={snapshot.data.aqiUpdatedAt ?? snapshot.data.current.time}
+            />
+          )}
 
           <div className="mt-6 flex items-start gap-3 rounded-2xl border border-blue-accent/20 bg-blue-accent/[0.05] p-4 text-sm leading-relaxed text-white/55">
             <BarChart3 size={18} className="mt-0.5 shrink-0 text-blue-300" aria-hidden="true" />
             <p>
-              These charts use the same Open-Meteo data shown on the Air page. Values are model
-              estimates and may differ from official local monitoring stations.
+              {snapshot.data.sourceType === 'station'
+                ? `The pollutant comparison uses measured data from ${snapshot.data.stationName}. AQI information and the time trend use Open-Meteo / CAMS model estimates when available.`
+                : 'These charts use Open-Meteo / CAMS model estimates and may differ from official local monitoring stations.'}
             </p>
           </div>
         </div>

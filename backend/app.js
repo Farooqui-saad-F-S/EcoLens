@@ -1,6 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import { connectDb } from './config/db.js'
+import airQualityRoutes from './routes/airQualityRoutes.js'
 import quizRoutes from './routes/quizRoutes.js'
 
 const app = express()
@@ -17,6 +18,8 @@ app.use(express.json({ limit: '10kb' }))
 app.get('/api/health', (_req, res) => {
   res.json({ success: true, message: 'EcoLens API is running' })
 })
+
+app.use('/api/air-quality', airQualityRoutes)
 
 app.use(
   '/api/quiz-results',
